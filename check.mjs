@@ -6,7 +6,8 @@
 //
 // Every title, "Last updated" date, heading, paragraph and bullet of the app's
 // Privacy Policy, Data Usage & Retention and Terms of Use must appear, in order,
-// in privacy/index.html or terms/index.html. Exit code 1 on any difference.
+// in privacy/index.html or terms/index.html; the Support page text (below) must
+// appear in support/index.html. Exit code 1 on any difference.
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -63,6 +64,36 @@ export function parseInformationPages(dart){
  return pages;
 }
 
+// Support page (no matching app screen). Single source of its text; approved by
+// Miki 10/11/2026. [[...]] marks an app button/screen label: the private builder
+// checks each one exists in the app code, so the steps never name a wrong button.
+export const SUPPORT_EMAIL='support@itemsss.app';
+export const SUPPORT_PAGE={
+ title:'Support',
+ blocks:[
+  {type:'p',text:`Need help with itemsss? Email us at ${SUPPORT_EMAIL}. We aim to reply within a few days.`},
+  {type:'section',title:'Delete your account',ordered:[
+   'Open itemsss and go to [[Account]] → [[Delete Account]].',
+   'If you have Pro with auto-renewal on, first cancel it in Settings > [your name] > Subscriptions on your iPhone. Deleting your account does not cancel an App Store subscription.',
+   'Tap [[Confirm]]. Your account, items and photos are deleted right away and cannot be recovered.',
+  ],paragraphs:[`Can't open the app? Email ${SUPPORT_EMAIL} from the email address of your account and we'll delete your account and data within 30 days.`]},
+  {type:'section',title:'Restore a purchase',paragraphs:['Go to [[Account]] → [[Billing Information]] → [[Restore]].']},
+ ],
+};
+export const plainSupport=t=>t.replace(/\[\[|\]\]/g,'');
+export function supportLabels(){
+ const all=JSON.stringify(SUPPORT_PAGE);
+ return [...new Set([...all.matchAll(/\[\[([^\]]+)\]\]/g)].map(m=>m[1]))];
+}
+export function supportTexts(){
+ const out=[SUPPORT_PAGE.title];
+ for(const b of SUPPORT_PAGE.blocks){
+  if(b.type==='p')out.push(plainSupport(b.text));
+  else out.push(b.title,...(b.ordered??[]).map(plainSupport),...(b.paragraphs??[]).map(plainSupport));
+ }
+ return out;
+}
+
 // Which app pages go on which web page, in this order.
 export const WEB_PAGES={
  'privacy/index.html':['privacyPolicy','dataUsageRetention'],
@@ -79,7 +110,7 @@ export function expectedTexts(page){
 }
 
 const decode=s=>s.replace(/&#39;/g,'\'').replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&');
-const visibleText=html=>decode(html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g,' ').replace(/<[^>]+>/g,'\n'))
+const visibleText=html=>decode(html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g,' ').replace(/<\/?(a|strong|em|b|i|span)\b[^>]*>/g,'').replace(/<[^>]+>/g,'\n'))
  .split('\n').map(l=>l.replace(/\s+/g,' ').trim()).filter(Boolean);
 
 export function check(dartPath,pagesDir){
@@ -96,6 +127,15 @@ export function check(dartPath,pagesDir){
     if(found<0){console.log(`NOT_ON_WEB ${file}: ${want.slice(0,90)}`);problems++;}
     else at=found+1;
    }
+  }
+ }
+ {
+  const lines=visibleText(readFileSync(join(pagesDir,'support/index.html'),'utf8'));
+  let at=0;
+  for(const text of supportTexts()){
+   const want=text.replace(/\s+/g,' ').trim();checked++;
+   const found=lines.indexOf(want,at);
+   if(found<0){console.log(`NOT_ON_WEB support/index.html: ${want.slice(0,90)}`);problems++;}else at=found+1;
   }
  }
  console.log(problems?`LEGAL_PAGES_MATCH=FAIL (${problems} of ${checked})`:`LEGAL_PAGES_MATCH=PASS (${checked} texts)`);
